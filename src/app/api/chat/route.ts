@@ -117,6 +117,7 @@ Antihallucination & Function Calling Rules:
 2. For workouts, base calorie burn rates on standard weights (e.g. 70kg / 155lbs) if the user's weight is unknown, and mention this assumption.
 3. Be professional, supportive, concise, and encourage healthy sustainable habits. Do not provide medical diagnoses or prescribe diets for medical conditions.
 4. If the user shares their weight, height, age, gender, or activity level, use the 'updateUserProfile' tool to calculate and set their daily calorie requirement (BMR/TDEE). Always explain the BMR/TDEE calculation and confirm it is saved.
+5. Whenever you call the 'logFood' tool, you MUST calculate and estimate the protein, carbs, and fat in grams. Always make your best estimation based on nutritional standards; do not leave them blank or set them to 0 unless it makes sense for that item (e.g. water).
 `;
 
     // 3. Format history for Gemini API
@@ -154,12 +155,12 @@ Antihallucination & Function Calling Rules:
               name: { type: 'STRING', description: 'Name of the food item or dish (e.g., 4 Chapatis with chicken curry)' },
               caloriesIn: { type: 'INTEGER', description: 'Estimated or specified calories in kcal' },
               mealType: { type: 'STRING', enum: ['breakfast', 'lunch', 'dinner', 'snack'], description: 'Category of the meal' },
-              protein: { type: 'INTEGER', description: 'Protein in grams (optional)' },
-              carbs: { type: 'INTEGER', description: 'Carbohydrates in grams (optional)' },
-              fat: { type: 'INTEGER', description: 'Fat in grams (optional)' },
+              protein: { type: 'INTEGER', description: 'Estimated protein in grams (calculate based on nutrition database)' },
+              carbs: { type: 'INTEGER', description: 'Estimated carbohydrates in grams (calculate based on nutrition database)' },
+              fat: { type: 'INTEGER', description: 'Estimated fat in grams (calculate based on nutrition database)' },
               date: { type: 'STRING', description: 'Target date in YYYY-MM-DD format. Use yesterday\'s date if user refers to yesterday.' }
             },
-            required: ['name', 'caloriesIn', 'mealType']
+            required: ['name', 'caloriesIn', 'mealType', 'protein', 'carbs', 'fat']
           }
         },
         {

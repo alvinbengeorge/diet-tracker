@@ -115,7 +115,7 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
                 </div>
 
                 {/* Right controls: Calories & Delete */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 shrink-0">
                   <div className="text-right shrink-0">
                     <span className={`text-sm font-bold ${isFood ? 'text-emerald-400' : 'text-orange-400'}`}>
                       {isFood ? `+${log.caloriesIn}` : `-${log.caloriesOut}`} kcal

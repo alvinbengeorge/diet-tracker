@@ -81,10 +81,10 @@ export async function POST(req: NextRequest) {
     logs.forEach((log) => {
       if (log.type === 'food') {
         totalCaloriesIn += log.caloriesIn || 0;
-        foodLogs.push(`- [${log.mealType}] ${log.name}: ${log.caloriesIn} kcal (P: ${log.protein}g, C: ${log.carbs}g, F: ${log.fat}g)`);
+        foodLogs.push(`- ID: ${log._id} | [${log.mealType}] ${log.name}: ${log.caloriesIn} kcal (P: ${log.protein}g, C: ${log.carbs}g, F: ${log.fat}g)`);
       } else {
         totalCaloriesOut += log.caloriesOut || 0;
-        workoutLogs.push(`- ${log.name}: burned ${log.caloriesOut} kcal over ${log.duration} mins`);
+        workoutLogs.push(`- ID: ${log._id} | ${log.name}: burned ${log.caloriesOut} kcal over ${log.duration} mins`);
       }
     });
 
@@ -118,6 +118,7 @@ Antihallucination & Function Calling Rules:
 3. Be professional, supportive, concise, and encourage healthy sustainable habits. Do not provide medical diagnoses or prescribe diets for medical conditions.
 4. If the user shares their weight, height, age, gender, or activity level, use the 'updateUserProfile' tool to calculate and set their daily calorie requirement (BMR/TDEE). Always explain the BMR/TDEE calculation and confirm it is saved.
 5. Whenever you call the 'logFood' tool, you MUST calculate and estimate the protein, carbs, and fat in grams. Always make your best estimation based on nutritional standards; do not leave them blank or set them to 0 unless it makes sense for that item (e.g. water).
+6. If the user requests to edit, modify, or add missing macronutrient values (protein, carbs, fat) or details to today's logs, use the 'updateLogEntry' tool using the corresponding ID listed in the log context.
 `;
 
     // 3. Format history for Gemini API
@@ -190,6 +191,26 @@ Antihallucination & Function Calling Rules:
               activityLevel: { type: 'STRING', enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'], description: 'Daily exercise/activity level (optional)' },
               targetCalories: { type: 'INTEGER', description: 'Custom daily calorie target requirement in kcal (e.g. 1710) (optional)' }
             }
+          }
+        },
+        {
+          name: 'updateLogEntry',
+          description: 'Updates an existing log entry (food or workout) in the user\'s database using its Mongo ID. All parameter fields are optional to allow partial edits.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              id: { type: 'STRING', description: 'The MongoDB ObjectId of the log entry to update (e.g. 64b8a...)' },
+              name: { type: 'STRING', description: 'Updated name of the item (optional)' },
+              caloriesIn: { type: 'INTEGER', description: 'Updated calories in kcal for food (optional)' },
+              caloriesOut: { type: 'INTEGER', description: 'Updated calories burned for workout (optional)' },
+              protein: { type: 'INTEGER', description: 'Updated protein in grams for food (optional)' },
+              carbs: { type: 'INTEGER', description: 'Updated carbs in grams for food (optional)' },
+              fat: { type: 'INTEGER', description: 'Updated fat in grams for food (optional)' },
+              duration: { type: 'INTEGER', description: 'Updated duration in minutes for workout (optional)' },
+              mealType: { type: 'STRING', enum: ['breakfast', 'lunch', 'dinner', 'snack'], description: 'Updated meal category (optional)' },
+              date: { type: 'STRING', description: 'Updated date in YYYY-MM-DD format (optional)' }
+            },
+            required: ['id']
           }
         }
       ]
@@ -293,6 +314,30 @@ Antihallucination & Function Calling Rules:
           if (args.targetCalories !== undefined) updateLog.push(`Target Calories: ${args.targetCalories} kcal`);
 
           loggedMessages.push(`Updated profile details (${updateLog.join(', ')})${bmrMessage}`);
+        } else if (call.name === 'updateLogEntry') {
+          const args = call.args as any;
+          const updateFields: any = {};
+          if (args.name !== undefined) updateFields.name = args.name;
+          if (args.caloriesIn !== undefined) updateFields.caloriesIn = args.caloriesIn;
+          if (args.caloriesOut !== undefined) updateFields.caloriesOut = args.caloriesOut;
+          if (args.protein !== undefined) updateFields.protein = args.protein;
+          if (args.carbs !== undefined) updateFields.carbs = args.carbs;
+          if (args.fat !== undefined) updateFields.fat = args.fat;
+          if (args.duration !== undefined) updateFields.duration = args.duration;
+          if (args.mealType !== undefined) updateFields.mealType = args.mealType;
+          if (args.date !== undefined) updateFields.date = new Date(args.date);
+
+          const updatedLog = await Log.findOneAndUpdate(
+            { _id: args.id, userId: user.userId },
+            { $set: updateFields },
+            { new: true }
+          );
+
+          if (updatedLog) {
+            loggedMessages.push(`Updated log entry "${updatedLog.name}" (ID: ${args.id})`);
+          } else {
+            loggedMessages.push(`Failed to update log entry: ID ${args.id} not found.`);
+          }
         }
       }
 

@@ -105,3 +105,47 @@ export async function DELETE(req: NextRequest) {
     );
   }
 }
+
+export async function PUT(req: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return unauthorizedResponse();
+
+    await connectToDatabase();
+    const data = await req.json();
+    const { id, name, date, caloriesIn, protein, carbs, fat, mealType, caloriesOut, duration } = data;
+
+    if (!id) {
+      return NextResponse.json({ error: 'Log ID is required' }, { status: 400 });
+    }
+
+    const updateFields: any = {};
+    if (name !== undefined) updateFields.name = name;
+    if (date !== undefined) updateFields.date = new Date(date);
+    if (caloriesIn !== undefined) updateFields.caloriesIn = caloriesIn;
+    if (protein !== undefined) updateFields.protein = protein;
+    if (carbs !== undefined) updateFields.carbs = carbs;
+    if (fat !== undefined) updateFields.fat = fat;
+    if (mealType !== undefined) updateFields.mealType = mealType;
+    if (caloriesOut !== undefined) updateFields.caloriesOut = caloriesOut;
+    if (duration !== undefined) updateFields.duration = duration;
+
+    const updatedLog = await Log.findOneAndUpdate(
+      { _id: id, userId: user.userId },
+      { $set: updateFields },
+      { new: true }
+    );
+
+    if (!updatedLog) {
+      return NextResponse.json({ error: 'Log not found or unauthorized' }, { status: 404 });
+    }
+
+    return NextResponse.json({ log: updatedLog });
+  } catch (error: any) {
+    console.error('Update Log Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal Server Error' },
+      { status: 500 }
+    );
+  }
+}

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { Trash2, Apple, Dumbbell, Calendar, Loader2 } from 'lucide-react';
+import { Trash2, Apple, Dumbbell, Calendar, Loader2, Pencil, X } from 'lucide-react';
 
 interface LogItem {
   _id: string;
@@ -23,6 +23,66 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
   const { fetchWithAuth } = useAuth();
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [editingLog, setEditingLog] = useState<LogItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCalories, setEditCalories] = useState<number>(0);
+  const [editProtein, setEditProtein] = useState<number>(0);
+  const [editCarbs, setEditCarbs] = useState<number>(0);
+  const [editFat, setEditFat] = useState<number>(0);
+  const [editDuration, setEditDuration] = useState<number>(0);
+  const [editMealType, setEditMealType] = useState('breakfast');
+  const [updating, setUpdating] = useState(false);
+
+  const startEdit = (log: LogItem) => {
+    setEditingLog(log);
+    setEditName(log.name);
+    setEditCalories(log.type === 'food' ? log.caloriesIn || 0 : log.caloriesOut || 0);
+    setEditProtein(log.protein || 0);
+    setEditCarbs(log.carbs || 0);
+    setEditFat(log.fat || 0);
+    setEditDuration(log.duration || 0);
+    setEditMealType(log.mealType || 'breakfast');
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLog) return;
+    setUpdating(true);
+
+    try {
+      const body: any = {
+        id: editingLog._id,
+        name: editName,
+      };
+
+      if (editingLog.type === 'food') {
+        body.caloriesIn = editCalories;
+        body.protein = editProtein;
+        body.carbs = editCarbs;
+        body.fat = editFat;
+        body.mealType = editMealType;
+      } else {
+        body.caloriesOut = editCalories;
+        body.duration = editDuration;
+      }
+
+      const res = await fetchWithAuth('/api/logs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        setEditingLog(null);
+        onLogDeleted();
+      }
+    } catch (err) {
+      console.error('Failed to edit log:', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   useEffect(() => {
     async function fetchLogs() {
@@ -122,8 +182,16 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
                     </span>
                   </div>
                   <button
+                    onClick={() => startEdit(log)}
+                    className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white border border-transparent hover:border-slate-700 transition-all duration-200"
+                    title="Edit entry"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={() => handleDelete(log._id)}
                     className="p-2 rounded-lg hover:bg-red-950/40 text-slate-500 hover:text-red-400 border border-transparent hover:border-red-900/30 transition-all duration-200"
+                    title="Delete entry"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -131,6 +199,171 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl relative overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Pencil className="h-4 w-4 text-red-500" />
+                Edit Log Entry
+              </h3>
+              <button
+                onClick={() => setEditingLog(null)}
+                className="text-slate-400 hover:text-white rounded-lg p-1 hover:bg-slate-800 transition-all duration-150"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Name / Description
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="block w-full rounded-xl border border-slate-800 bg-slate-955 px-4 py-2.5 text-sm text-white focus:border-red-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              {editingLog.type === 'food' ? (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Meal Category
+                      </label>
+                      <select
+                        value={editMealType}
+                        onChange={(e) => setEditMealType(e.target.value)}
+                        className="block w-full rounded-xl border border-slate-800 bg-slate-955 px-4 py-2.5 text-sm text-white focus:border-red-500 focus:outline-none transition-colors"
+                      >
+                        <option value="breakfast">Breakfast</option>
+                        <option value="lunch">Lunch</option>
+                        <option value="dinner">Dinner</option>
+                        <option value="snack">Snack</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Calories (kcal)
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        value={editCalories}
+                        onChange={(e) => setEditCalories(Number(e.target.value))}
+                        className="block w-full rounded-xl border border-slate-800 bg-slate-955 px-4 py-2.5 text-sm text-white focus:border-red-500 focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        Protein (g)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editProtein}
+                        onChange={(e) => setEditProtein(Number(e.target.value))}
+                        className="block w-full rounded-xl border border-slate-800 bg-slate-955 px-3 py-2 text-xs text-white focus:border-red-500 focus:outline-none text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        Carbs (g)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editCarbs}
+                        onChange={(e) => setEditCarbs(Number(e.target.value))}
+                        className="block w-full rounded-xl border border-slate-800 bg-slate-955 px-3 py-2 text-xs text-white focus:border-red-500 focus:outline-none text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        Fat (g)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editFat}
+                        onChange={(e) => setEditFat(Number(e.target.value))}
+                        className="block w-full rounded-xl border border-slate-800 bg-slate-955 px-3 py-2 text-xs text-white focus:border-red-500 focus:outline-none text-center"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Duration (mins)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={editDuration}
+                      onChange={(e) => setEditDuration(Number(e.target.value))}
+                      className="block w-full rounded-xl border border-slate-800 bg-slate-955 px-4 py-2.5 text-sm text-white focus:border-red-500 focus:outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Calories Burned (kcal)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={editCalories}
+                      onChange={(e) => setEditCalories(Number(e.target.value))}
+                      className="block w-full rounded-xl border border-slate-800 bg-slate-955 px-4 py-2.5 text-sm text-white focus:border-red-500 focus:outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Buttons */}
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingLog(null)}
+                  className="rounded-xl border border-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-all duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="rounded-xl bg-red-500 hover:bg-red-400 active:bg-red-600 px-6 py-2.5 text-sm font-bold text-slate-955 transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {updating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

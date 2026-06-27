@@ -1,0 +1,371 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenAI } from '@google/genai';
+import { connectToDatabase } from '@/lib/db';
+import Chat from '@/models/Chat';
+import Log from '@/models/Log';
+import User from '@/models/User';
+import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
+
+const apiKey = process.env.GEMINI_API_KEY;
+
+export async function GET(req: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return unauthorizedResponse();
+
+    await connectToDatabase();
+
+    const chat = await Chat.findOne({ userId: user.userId });
+    return NextResponse.json({ messages: chat?.messages || [] });
+  } catch (error: any) {
+    console.error('Fetch Chat Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal Server Error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return unauthorizedResponse();
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'Gemini API Key is not configured on the server.' },
+        { status: 500 }
+      );
+    }
+
+    await connectToDatabase();
+    const { message } = await req.json();
+
+    if (!message) {
+      return NextResponse.json({ error: 'Message content is required' }, { status: 400 });
+    }
+
+    // 1. Fetch current chat history
+    let chat = await Chat.findOne({ userId: user.userId });
+    if (!chat) {
+      chat = new Chat({ userId: user.userId, messages: [] });
+    }
+
+    // Save user's message
+    chat.messages.push({ role: 'user', content: message, timestamp: new Date() });
+
+    // 2. Fetch today's logs & user profile to provide context
+    const userDoc = await User.findById(user.userId);
+    const userWeight = userDoc?.weight ? `${userDoc.weight} kg` : 'Not provided yet';
+    const userHeight = userDoc?.height ? `${userDoc.height} cm` : 'Not provided yet';
+    const userAge = userDoc?.age ? `${userDoc.age} years` : 'Not provided yet';
+    const userGender = userDoc?.gender && userDoc.gender !== 'none' ? userDoc.gender : 'Not provided yet';
+    const userActivity = userDoc?.activityLevel && userDoc.activityLevel !== 'none' ? userDoc.activityLevel : 'Not provided yet';
+    const targetCalories = userDoc?.targetCalories || 2000;
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const logs = await Log.find({
+      userId: user.userId,
+      date: { $gte: startOfDay, $lte: endOfDay },
+    });
+
+    let totalCaloriesIn = 0;
+    let totalCaloriesOut = 0;
+    const foodLogs: string[] = [];
+    const workoutLogs: string[] = [];
+
+    logs.forEach((log) => {
+      if (log.type === 'food') {
+        totalCaloriesIn += log.caloriesIn || 0;
+        foodLogs.push(`- [${log.mealType}] ${log.name}: ${log.caloriesIn} kcal (P: ${log.protein}g, C: ${log.carbs}g, F: ${log.fat}g)`);
+      } else {
+        totalCaloriesOut += log.caloriesOut || 0;
+        workoutLogs.push(`- ${log.name}: burned ${log.caloriesOut} kcal over ${log.duration} mins`);
+      }
+    });
+
+    const context = `
+You are a premium AI Diet and Workout Assistant. You help the user manage their daily logs and fitness goals.
+Today's Date: ${new Date().toDateString()}.
+The user's username is: ${user.username}.
+
+The user's current logs for TODAY:
+- Total Calories Ingested: ${totalCaloriesIn} kcal
+- Total Calories Burned: ${totalCaloriesOut} kcal
+- Net Calories: ${totalCaloriesIn - totalCaloriesOut} kcal
+
+Food Logged Today:
+${foodLogs.length > 0 ? foodLogs.join('\n') : 'No food logged yet.'}
+
+Workouts Logged Today:
+${workoutLogs.length > 0 ? workoutLogs.join('\n') : 'No workouts logged yet.'}
+
+User Profile Details:
+- Weight: ${userWeight}
+- Height: ${userHeight}
+- Age: ${userAge}
+- Gender: ${userGender}
+- Activity Level: ${userActivity}
+- Daily Energy Requirement: ${targetCalories} kcal (This is set dynamically based on user profile BMR and Activity Level)
+
+Antihallucination & Function Calling Rules:
+1. If the user asks for exact calorie estimations of a meal they describe, clearly explain that it is an estimation and state any assumptions (like standard portion sizes) you make.
+2. For workouts, base calorie burn rates on standard weights (e.g. 70kg / 155lbs) if the user's weight is unknown, and mention this assumption.
+3. Be professional, supportive, concise, and encourage healthy sustainable habits. Do not provide medical diagnoses or prescribe diets for medical conditions.
+4. If the user shares their weight, height, age, gender, or activity level, use the 'updateUserProfile' tool to calculate and set their daily calorie requirement (BMR/TDEE). Always explain the BMR/TDEE calculation and confirm it is saved.
+`;
+
+    // 3. Format history for Gemini API
+    // The @google/genai SDK accepts history inside contents: [{ role: 'user', parts: [...] }, ...]
+    // Max 10 previous messages for context length limits.
+    const historyLimit = 10;
+    const recentMessages = chat.messages.slice(-historyLimit - 1, -1); // Exclude the user message we just added
+
+    const contents = [];
+    
+    // Add history in Gemini format
+    for (const msg of recentMessages) {
+      contents.push({
+        role: msg.role,
+        parts: [{ text: msg.content }],
+      });
+    }
+
+    // Add current user message with system context prepended
+    contents.push({
+      role: 'user',
+      parts: [
+        { text: `${context}\n\nUser Question: ${message}` }
+      ],
+    });
+
+    const tools: any = [{
+      functionDeclarations: [
+        {
+          name: 'logFood',
+          description: 'Logs a food item or meal into the user\'s tracking database.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              name: { type: 'STRING', description: 'Name of the food item or dish (e.g., 4 Chapatis with chicken curry)' },
+              caloriesIn: { type: 'INTEGER', description: 'Estimated or specified calories in kcal' },
+              mealType: { type: 'STRING', enum: ['breakfast', 'lunch', 'dinner', 'snack'], description: 'Category of the meal' },
+              protein: { type: 'INTEGER', description: 'Protein in grams (optional)' },
+              carbs: { type: 'INTEGER', description: 'Carbohydrates in grams (optional)' },
+              fat: { type: 'INTEGER', description: 'Fat in grams (optional)' },
+              date: { type: 'STRING', description: 'Target date in YYYY-MM-DD format. Use yesterday\'s date if user refers to yesterday.' }
+            },
+            required: ['name', 'caloriesIn', 'mealType']
+          }
+        },
+        {
+          name: 'logWorkout',
+          description: 'Logs a workout, walk, or exercise activity to the user\'s tracking database.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              name: { type: 'STRING', description: 'Name of the activity or exercise (e.g., Walking 4623 steps)' },
+              caloriesOut: { type: 'INTEGER', description: 'Estimated or specified calories burned' },
+              duration: { type: 'INTEGER', description: 'Duration in minutes (optional)' },
+              date: { type: 'STRING', description: 'Target date in YYYY-MM-DD format. Use yesterday\'s date if user refers to yesterday.' }
+            },
+            required: ['name', 'caloriesOut']
+          }
+        },
+        {
+          name: 'updateUserProfile',
+          description: 'Saves user metrics (weight in kg, height in cm, age in years, gender, activity level, or direct daily targetCalories). All fields are optional to allow partial updates.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              weight: { type: 'NUMBER', description: 'Weight in kilograms (kg) (optional)' },
+              height: { type: 'NUMBER', description: 'Height in centimeters (cm) (optional)' },
+              age: { type: 'INTEGER', description: 'Age in years (optional)' },
+              gender: { type: 'STRING', enum: ['male', 'female'], description: 'Gender of the user (optional)' },
+              activityLevel: { type: 'STRING', enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'], description: 'Daily exercise/activity level (optional)' },
+              targetCalories: { type: 'INTEGER', description: 'Custom daily calorie target requirement in kcal (e.g. 1710) (optional)' }
+            }
+          }
+        }
+      ]
+    }];
+
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: contents,
+      config: {
+        tools: tools,
+      }
+    });
+
+    const functionCalls = response.functionCalls;
+    let loggedMessages: string[] = [];
+
+    if (functionCalls && functionCalls.length > 0) {
+      for (const call of functionCalls) {
+        if (call.name === 'logFood') {
+          const args = call.args as any;
+          const logDate = args.date ? new Date(args.date) : new Date();
+          await Log.create({
+            userId: user.userId,
+            type: 'food',
+            name: args.name,
+            date: logDate,
+            caloriesIn: args.caloriesIn,
+            mealType: args.mealType || 'none',
+            protein: args.protein || 0,
+            carbs: args.carbs || 0,
+            fat: args.fat || 0,
+          });
+          loggedMessages.push(`Logged food: "${args.name}" (${args.caloriesIn} kcal) under ${args.mealType} on ${logDate.toDateString()}`);
+        } else if (call.name === 'logWorkout') {
+          const args = call.args as any;
+          const logDate = args.date ? new Date(args.date) : new Date();
+          await Log.create({
+            userId: user.userId,
+            type: 'workout',
+            name: args.name,
+            date: logDate,
+            caloriesOut: args.caloriesOut,
+            duration: args.duration || 0,
+          });
+          loggedMessages.push(`Logged workout: "${args.name}" (burned ${args.caloriesOut} kcal) on ${logDate.toDateString()}`);
+        } else if (call.name === 'updateUserProfile') {
+          const args = call.args as any;
+          
+          const existingUser = await User.findById(user.userId);
+          if (!existingUser) continue;
+
+          const weight = args.weight !== undefined ? args.weight : existingUser.weight;
+          const height = args.height !== undefined ? args.height : existingUser.height;
+          const age = args.age !== undefined ? args.age : existingUser.age;
+          const gender = args.gender !== undefined ? args.gender : existingUser.gender;
+          const activityLevel = args.activityLevel !== undefined ? args.activityLevel : existingUser.activityLevel;
+
+          let targetCal = existingUser.targetCalories || 2000;
+          let bmrMessage = "";
+
+          if (args.targetCalories !== undefined) {
+            targetCal = args.targetCalories;
+            bmrMessage = `. Custom daily target set to ${targetCal} kcal.`;
+          } else if (weight && height && age && gender && gender !== 'none') {
+            let bmr = 0;
+            if (gender === 'male') {
+              bmr = 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age);
+            } else {
+              bmr = 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age);
+            }
+
+            let factor = 1.2;
+            const currentActivity = activityLevel !== 'none' ? activityLevel : 'sedentary';
+            switch (currentActivity) {
+              case 'sedentary': factor = 1.2; break;
+              case 'light': factor = 1.375; break;
+              case 'moderate': factor = 1.55; break;
+              case 'active': factor = 1.725; break;
+              case 'very_active': factor = 1.9; break;
+            }
+
+            targetCal = Math.round(bmr * factor);
+            bmrMessage = `. Calculated BMR: ${Math.round(bmr)} kcal, setting daily target requirement to ${targetCal} kcal.`;
+          }
+
+          await User.findByIdAndUpdate(user.userId, {
+            weight,
+            height,
+            age,
+            gender,
+            activityLevel,
+            targetCalories: targetCal,
+          });
+
+          const updateLog = [];
+          if (args.weight !== undefined) updateLog.push(`Weight: ${args.weight}kg`);
+          if (args.height !== undefined) updateLog.push(`Height: ${args.height}cm`);
+          if (args.age !== undefined) updateLog.push(`Age: ${args.age}`);
+          if (args.gender !== undefined) updateLog.push(`Gender: ${args.gender}`);
+          if (args.activityLevel !== undefined) updateLog.push(`Activity Level: ${args.activityLevel}`);
+          if (args.targetCalories !== undefined) updateLog.push(`Target Calories: ${args.targetCalories} kcal`);
+
+          loggedMessages.push(`Updated profile details (${updateLog.join(', ')})${bmrMessage}`);
+        }
+      }
+
+      // Generate final conversational confirmation via Gemini
+      const confirmationContents = [
+        ...contents,
+        {
+          role: 'model',
+          parts: [{ text: `I am logging the following items: ${loggedMessages.join(', ')}.` }]
+        },
+        {
+          role: 'user',
+          parts: [{ text: `System action completed. Items logged:\n${loggedMessages.join('\n')}\n\nPlease summarize the items you have successfully saved to the user's database.` }]
+        }
+      ];
+
+      const followUpResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: confirmationContents,
+      });
+
+      const replyText = followUpResponse.text || `I have logged the items for you:\n${loggedMessages.join('\n')}`;
+
+      chat.messages.push({ role: 'model', content: replyText, timestamp: new Date() });
+      await chat.save();
+
+      return NextResponse.json({
+        message: {
+          role: 'model',
+          content: replyText,
+          timestamp: new Date(),
+        },
+        dataUpdated: true
+      });
+    }
+
+    const replyText = response.text || "I'm sorry, I encountered an issue processing your query.";
+
+    // Save model response to DB
+    chat.messages.push({ role: 'model', content: replyText, timestamp: new Date() });
+    await chat.save();
+
+    return NextResponse.json({
+      message: {
+        role: 'model',
+        content: replyText,
+        timestamp: new Date(),
+      },
+    });
+  } catch (error: any) {
+    console.error('Chat Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal Server Error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return unauthorizedResponse();
+
+    await connectToDatabase();
+
+    // Clear chat history
+    await Chat.findOneAndDelete({ userId: user.userId });
+    return NextResponse.json({ message: 'Chat history cleared successfully' });
+  } catch (error: any) {
+    console.error('Clear Chat Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal Server Error' },
+      { status: 500 }
+    );
+  }
+}

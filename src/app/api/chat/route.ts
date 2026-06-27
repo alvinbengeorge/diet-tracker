@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+import { generateContentWithFallback } from '@/lib/gemini';
 import { connectToDatabase } from '@/lib/db';
 import Chat from '@/models/Chat';
 import Log from '@/models/Log';
@@ -194,9 +194,8 @@ Antihallucination & Function Calling Rules:
       ]
     }];
 
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const response = await generateContentWithFallback({
+      apiKey,
       contents: contents,
       config: {
         tools: tools,
@@ -309,8 +308,8 @@ Antihallucination & Function Calling Rules:
         }
       ];
 
-      const followUpResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+      const followUpResponse = await generateContentWithFallback({
+        apiKey,
         contents: confirmationContents,
       });
 

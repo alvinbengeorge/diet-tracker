@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
+import { generateContentWithFallback } from '@/lib/gemini';
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -18,19 +18,16 @@ export async function POST(req: NextRequest) {
 
     const { image } = await req.json();
     if (!image) {
-      return NextResponse.json({ error: 'Image is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Image data is required.' }, { status: 400 });
     }
 
-    // Parse base64 image data: "data:image/jpeg;base64,/9j/4AAQSkZ..."
-    const matches = image.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+    const matches = image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     if (!matches || matches.length !== 3) {
-      return NextResponse.json({ error: 'Invalid image format' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid base64 image data.' }, { status: 400 });
     }
 
     const mimeType = matches[1];
     const base64Data = matches[2];
-
-    const ai = new GoogleGenAI({ apiKey });
 
     const systemPrompt = `You are a professional nutrition expert. Analyze the provided image of a meal.
 Estimate the portion sizes, identify the food items, and calculate the total calories, protein (g), carbs (g), and fat (g).
@@ -40,8 +37,8 @@ To prevent hallucinations:
 2. If there are ambiguous items or you are guessing portions, set a lower "confidence" score (e.g., 0.5) and document your reasoning in "hallucinationRiskNote".
 3. Provide realistic estimations based on USDA guidelines. Do not overestimate or underestimate excessively.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    const response = await generateContentWithFallback({
+      apiKey,
       contents: [
         {
           inlineData: {

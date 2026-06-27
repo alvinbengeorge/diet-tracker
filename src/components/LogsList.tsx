@@ -145,32 +145,33 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
             return (
               <div
                 key={log._id}
-                className="flex items-center justify-between gap-4 rounded-xl border border-slate-800/80 bg-slate-950/40 p-4 hover:border-slate-800 hover:bg-slate-950/70 transition-all duration-200"
+                className={`flex items-center justify-between gap-4 rounded-xl border border-slate-900 border-l-4 bg-slate-950/20 p-4 hover:border-slate-800/80 hover:bg-slate-950/50 transition-all duration-200 group ${
+                  isFood ? 'border-l-emerald-500/80' : 'border-l-orange-500/80'
+                }`}
               >
                 {/* Details info */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 border ${
                     isFood
                       ? 'bg-emerald-950/40 border-emerald-900/30 text-emerald-400'
                       : 'bg-orange-950/40 border-orange-900/30 text-orange-400'
                   }`}>
-                    {isFood ? <Apple className="h-5 w-5" /> : <Dumbbell className="h-5 w-5" />}
+                    {isFood ? <Apple className="h-4.5 w-4.5" /> : <Dumbbell className="h-4.5 w-4.5" />}
                   </div>
                   <div className="min-w-0">
                     <h4 className="text-sm font-semibold text-slate-100 truncate pr-2" title={log.name}>{log.name}</h4>
-                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-slate-400 mt-1 capitalize">
-                      <span>{isFood ? log.mealType : `${log.duration} mins`}</span>
-                      {isFood && (log.protein || log.carbs || log.fat) ? (
-                        <>
-                          <span className="text-slate-600">•</span>
-                          <span>P: {log.protein || 0}g</span>
-                          <span className="text-slate-600">•</span>
-                          <span>C: {log.carbs || 0}g</span>
-                          <span className="text-slate-600">•</span>
-                          <span>F: {log.fat || 0}g</span>
-                        </>
-                      ) : null}
+                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 capitalize">
+                      <span className="bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-400">
+                        {isFood ? log.mealType : `${log.duration} mins`}
+                      </span>
                     </div>
+                    {isFood && (log.protein || log.carbs || log.fat) ? (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-950/20 text-emerald-400 text-[10px] font-medium border border-emerald-900/30">P: {log.protein || 0}g</span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-955/20 text-amber-400 text-[10px] font-medium border border-amber-900/30">C: {log.carbs || 0}g</span>
+                        <span className="px-1.5 py-0.5 rounded bg-rose-950/20 text-rose-400 text-[10px] font-medium border border-rose-950/30">F: {log.fat || 0}g</span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -181,20 +182,24 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
                       {isFood ? `+${log.caloriesIn}` : `-${log.caloriesOut}`} kcal
                     </span>
                   </div>
-                  <button
-                    onClick={() => startEdit(log)}
-                    className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white border border-transparent hover:border-slate-700 transition-all duration-200"
-                    title="Edit entry"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(log._id)}
-                    className="p-2 rounded-lg hover:bg-red-950/40 text-slate-500 hover:text-red-400 border border-transparent hover:border-red-900/30 transition-all duration-200"
-                    title="Delete entry"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  
+                  {/* Actions (visible always on mobile, reveals on hover on desktop) */}
+                  <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
+                    <button
+                      onClick={() => startEdit(log)}
+                      className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-white border border-transparent hover:border-slate-700 transition-all duration-200"
+                      title="Edit entry"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(log._id)}
+                      className="p-1.5 rounded-lg hover:bg-red-950/40 text-slate-500 hover:text-red-400 border border-transparent hover:border-red-900/30 transition-all duration-200"
+                      title="Delete entry"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );

@@ -15,6 +15,60 @@ interface GeminiEstimation {
   hallucinationRiskNote?: string;
 }
 
+// Compress and resize images to reduce bandwidth and speed up Gemini API processing
+const compressImage = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.7): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(event.target?.result as string); // fallback to original
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => {
+        reject(new Error('Failed to load image for compression'));
+      };
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
+
+const NUTRITION_TIPS = [
+  "Protein has the highest Thermic Effect of Food (TEF), burning up to 30% of its calories just during digestion!",
+  "Fiber isn't digested, but it feeds healthy gut microbes and keeps you full for longer.",
+  "Scanning your portion sizes and comparing against USDA database standards...",
+  "Drinking water before a meal can naturally reduce calorie intake and aid digestion.",
+  "Evaluating macronutrient distribution (protein, carbs, fats) for maximum energy...",
+  "Fun fact: Fats are essential for absorbing fat-soluble vitamins (A, D, E, and K)!",
+  "Almost there! Refinement algorithms are validating food densities..."
+];
+
 export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [mealType, setMealType] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('breakfast');
@@ -31,11 +85,12 @@ export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void 
   const [editableFat, setEditableFat] = useState(0);
   
   const [saving, setSaving] = useState(false);
+  const [currentTip, setCurrentTip] = useState(NUTRITION_TIPS[0]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Convert uploaded image file to Base64 format
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Compress and preview the file
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
     setEstimation(null);
     const file = e.target.files?.[0];
@@ -46,11 +101,17 @@ export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void 
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressedBase64 = await compressImage(file);
+      setImagePreview(compressedBase64);
+    } catch (err: any) {
+      // Fallback to standard FileReader if compression fails
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -59,6 +120,14 @@ export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void 
     setError(null);
     setAnalyzing(true);
     setEstimation(null);
+
+    // Tip rotation interval
+    let tipIndex = 0;
+    setCurrentTip(NUTRITION_TIPS[0]);
+    const tipInterval = setInterval(() => {
+      tipIndex = (tipIndex + 1) % NUTRITION_TIPS.length;
+      setCurrentTip(NUTRITION_TIPS[tipIndex]);
+    }, 3000);
 
     try {
       const res = await fetchWithAuth('/api/analyze-image', {
@@ -85,6 +154,7 @@ export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void 
     } catch (err: any) {
       setError(err.message || 'Analysis failed. Please try again.');
     } finally {
+      clearInterval(tipInterval);
       setAnalyzing(false);
     }
   };
@@ -185,22 +255,35 @@ export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void 
         <div className="space-y-4">
           <div className="relative aspect-video rounded-xl overflow-hidden border border-slate-800">
             <img src={imagePreview} alt="Food Upload Preview" className="object-cover w-full h-full" />
+            {analyzing && (
+              <div className="absolute inset-0 bg-red-500/5 pointer-events-none overflow-hidden">
+                <div className="laser-scanner" />
+              </div>
+            )}
             <button
               onClick={() => {
                 setImagePreview(null);
                 setError(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
               }}
-              className="absolute top-2 right-2 rounded-lg bg-slate-950/80 hover:bg-slate-950 border border-slate-800 px-2 py-1 text-xs text-slate-300 hover:text-white transition-colors"
+              disabled={analyzing}
+              className="absolute top-2 right-2 rounded-lg bg-slate-955/85 hover:bg-slate-955 border border-slate-850 px-2 py-1 text-xs text-slate-300 hover:text-white transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
           </div>
 
+          {analyzing && (
+            <div className="rounded-xl border border-red-500/10 bg-red-500/5 p-4 text-center mt-2 animate-pulse">
+              <span className="text-xs font-bold text-red-400 block mb-1">Nutrition Insight</span>
+              <p className="text-[11.5px] text-slate-300 italic leading-relaxed">{currentTip}</p>
+            </div>
+          )}
+
           <button
             onClick={handleAnalyze}
             disabled={analyzing}
-            className="flex w-full justify-center items-center rounded-xl bg-red-500 hover:bg-red-400 active:bg-red-600 py-3 text-sm font-semibold text-slate-950 transition-all duration-200 shadow-md shadow-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex w-full justify-center items-center rounded-xl bg-red-500 hover:bg-red-400 active:bg-red-600 py-3 text-sm font-semibold text-slate-955 transition-all duration-200 shadow-md shadow-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {analyzing ? (
               <>
@@ -338,6 +421,22 @@ export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void 
           </div>
         </div>
       )}
+
+      {/* Laser scan animation stylesheet */}
+      <style>{`
+        @keyframes scanLine {
+          0% { top: 0%; }
+          100% { top: 100%; }
+        }
+        .laser-scanner {
+          position: absolute;
+          width: 100%;
+          height: 3px;
+          background: linear-gradient(90deg, transparent, #ef4444, transparent);
+          box-shadow: 0 0 10px #ef4444, 0 0 3px #ef4444;
+          animation: scanLine 2.5s ease-in-out infinite alternate;
+        }
+      `}</style>
     </div>
   );
 }

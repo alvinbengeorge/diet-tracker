@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2 } from 'lucide-react';
 
@@ -46,7 +46,7 @@ export default function CalorieChart({ refreshTrigger }: { refreshTrigger: numbe
     );
   }
 
-  // Calculate overall weekly macros sum for the Pie Chart
+  // Check if any macros are logged this week
   let totalProtein = 0;
   let totalCarbs = 0;
   let totalFat = 0;
@@ -56,12 +56,6 @@ export default function CalorieChart({ refreshTrigger }: { refreshTrigger: numbe
     totalCarbs += d.carbs;
     totalFat += d.fat;
   });
-
-  const macroPieData = [
-    { name: 'Protein (g)', value: totalProtein, color: '#38bdf8' }, // sky-400
-    { name: 'Carbs (g)', value: totalCarbs, color: '#fbbf24' },   // amber-400
-    { name: 'Fat (g)', value: totalFat, color: '#f43f5e' },       // rose-500
-  ];
 
   const hasMacros = totalProtein + totalCarbs + totalFat > 0;
 
@@ -119,59 +113,37 @@ export default function CalorieChart({ refreshTrigger }: { refreshTrigger: numbe
         )}
       </div>
 
-      {/* Pie Chart: Macros distribution */}
+      {/* Stacked Bar Chart: Macronutrients Day-wise */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 backdrop-blur-sm flex flex-col justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-white mb-2">Weekly Macronutrients</h3>
-          <p className="text-xs text-slate-400 mb-4">Total breakdown of consumed macros</p>
+          <h3 className="text-lg font-semibold text-white mb-2">Daily Macronutrients</h3>
+          <p className="text-xs text-slate-400 mb-4">Day-wise breakdown of protein, carbs, and fats</p>
         </div>
         {!hasMacros ? (
-          <div className="flex-1 flex items-center justify-center text-slate-500 min-h-[180px]">
-            Log food items to view macro ratios.
+          <div className="flex-1 flex items-center justify-center text-slate-500 min-h-[200px]">
+            Log food items to view macro breakdown.
           </div>
         ) : (
-          <div className="flex-1 flex flex-col sm:flex-row items-center justify-center gap-6">
-            <div className="h-36 w-36 relative shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={macroPieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={45}
-                    outerRadius={60}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {macroPieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-xs text-slate-400">Total Macros</span>
-                <span className="text-sm font-bold text-white">{totalProtein + totalCarbs + totalFat}g</span>
-              </div>
-            </div>
-            {/* Legend info */}
-            <div className="space-y-2 w-full">
-              {macroPieData.map((m) => {
-                const total = totalProtein + totalCarbs + totalFat;
-                const percentage = total > 0 ? Math.round((m.value / total) * 100) : 0;
-                return (
-                  <div key={m.name} className="flex justify-between items-center text-sm">
-                    <span className="flex items-center gap-2 text-slate-300">
-                      <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
-                      {m.name.split(' ')[0]}
-                    </span>
-                    <span className="font-semibold text-white">
-                      {m.value}g ({percentage}%)
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+          <div className="flex-1 h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklyData} margin={{ top: 10, right: 5, left: -25, bottom: 0 }}>
+                <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }}
+                  labelStyle={{ color: '#94a3b8', fontWeight: 'bold' }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  height={32}
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
+                />
+                <Bar dataKey="protein" name="Protein (g)" stackId="macros" fill="#10b981" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="carbs" name="Carbs (g)" stackId="macros" fill="#fbbf24" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="fat" name="Fat (g)" stackId="macros" fill="#f43f5e" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
       </div>

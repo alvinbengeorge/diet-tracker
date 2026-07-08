@@ -15,7 +15,12 @@ export async function generateContentWithFallback({
   contents,
   config,
 }: GenerateOptions) {
-  const models = ['gemini-3.5-flash', 'gemini-2.5-flash'];
+  const models = [
+    'gemini-3.1-flash-lite',
+    'gemini-3-flash',
+    'gemini-3.5-flash',
+    'gemini-2.5-flash'
+  ];
   const maxRetries = 3;
   const initialDelay = 1000; // 1 second
 

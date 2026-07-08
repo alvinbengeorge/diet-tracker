@@ -42,6 +42,9 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [activeTab, setActiveTab] = useState<'tracker' | 'chat'>('tracker');
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    return new Date().toLocaleDateString('en-CA'); // Safe YYYY-MM-DD local format
+  });
 
   // Redirect if not logged in
   useEffect(() => {
@@ -52,8 +55,8 @@ export default function Dashboard() {
 
   const fetchSummary = useCallback(async () => {
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const res = await fetchWithAuth(`/api/summary?date=${todayStr}`);
+      setLoadingSummary(true);
+      const res = await fetchWithAuth(`/api/summary?date=${selectedDate}`);
       if (res.ok) {
         const data = await res.json();
         setSummary(data.summary);
@@ -63,13 +66,13 @@ export default function Dashboard() {
     } finally {
       setLoadingSummary(false);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, selectedDate]);
 
   useEffect(() => {
     if (user) {
       fetchSummary();
     }
-  }, [user, fetchSummary, refreshTrigger]);
+  }, [user, fetchSummary, refreshTrigger, selectedDate]);
 
   const handleRefresh = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -207,17 +210,22 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                <LogForm onLogSaved={handleRefresh} />
+                <LogForm onLogSaved={handleRefresh} selectedDate={selectedDate} />
               </div>
 
               {/* Column 2: Image Calorie Scanner */}
               <div>
-                <ImageEstimator onLogSaved={handleRefresh} />
+                <ImageEstimator onLogSaved={handleRefresh} selectedDate={selectedDate} />
               </div>
 
               {/* Column 3: Log Entries List */}
               <div className="lg:col-span-1">
-                <LogsList refreshTrigger={refreshTrigger} onLogDeleted={handleRefresh} />
+                <LogsList
+                  selectedDate={selectedDate}
+                  setSelectedDate={setSelectedDate}
+                  refreshTrigger={refreshTrigger}
+                  onLogDeleted={handleRefresh}
+                />
               </div>
             </section>
           </>

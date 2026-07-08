@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { PlusCircle, Loader2 } from 'lucide-react';
 
-export default function LogForm({ onLogSaved }: { onLogSaved: () => void }) {
+export default function LogForm({ onLogSaved, selectedDate }: { onLogSaved: () => void; selectedDate?: string }) {
   const { fetchWithAuth } = useAuth();
   const [type, setType] = useState<'food' | 'workout'>('food');
   const [name, setName] = useState('');
@@ -32,7 +32,7 @@ export default function LogForm({ onLogSaved }: { onLogSaved: () => void }) {
     const body: any = {
       type,
       name: name.trim(),
-      date: new Date(),
+      date: selectedDate ? new Date(selectedDate + 'T12:00:00') : new Date(),
     };
 
     if (type === 'food') {

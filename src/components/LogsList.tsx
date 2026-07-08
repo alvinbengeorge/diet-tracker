@@ -19,10 +19,21 @@ interface LogItem {
   image?: string;
 }
 
-export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrigger: number; onLogDeleted: () => void }) {
+export default function LogsList({
+  selectedDate,
+  setSelectedDate,
+  refreshTrigger,
+  onLogDeleted,
+}: {
+  selectedDate: string;
+  setSelectedDate: (date: string) => void;
+  refreshTrigger: number;
+  onLogDeleted: () => void;
+}) {
   const { fetchWithAuth } = useAuth();
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [editingLog, setEditingLog] = useState<LogItem | null>(null);
   const [editName, setEditName] = useState('');
@@ -87,8 +98,8 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
   useEffect(() => {
     async function fetchLogs() {
       try {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const res = await fetchWithAuth(`/api/logs?date=${todayStr}`);
+        setLoading(true);
+        const res = await fetchWithAuth(`/api/logs?date=${selectedDate}`);
         if (res.ok) {
           const data = await res.json();
           setLogs(data.logs || []);
@@ -100,7 +111,7 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
       }
     }
     fetchLogs();
-  }, [fetchWithAuth, refreshTrigger]);
+  }, [fetchWithAuth, refreshTrigger, selectedDate]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this log?')) return;
@@ -127,16 +138,63 @@ export default function LogsList({ refreshTrigger, onLogDeleted }: { refreshTrig
     );
   }
 
+  // Generate last 7 days starting from today going back
+  const getDaysOfWeek = () => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push(d);
+    }
+    return days;
+  };
+
+  const selectedDateObj = new Date(selectedDate + 'T00:00:00');
+  const formattedSelectedDate = selectedDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const isTodaySelected = selectedDate === new Date().toLocaleDateString('en-CA');
+  const titleLabel = isTodaySelected ? "Today's Log Entries" : `${formattedSelectedDate} Logs`;
+
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 backdrop-blur-sm">
       <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
         <Calendar className="h-5 w-5 text-red-400" />
-        Today's Log Entries
+        {titleLabel}
       </h3>
+
+      {/* 7-Day Date Slider */}
+      <div className="flex gap-2 overflow-x-auto pb-3 mb-5 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+        {getDaysOfWeek().map((day) => {
+          const dayStr = day.toLocaleDateString('en-CA'); // YYYY-MM-DD local format
+          const isToday = dayStr === new Date().toLocaleDateString('en-CA');
+          const isSelected = selectedDate === dayStr;
+          const dayName = day.toLocaleDateString('en-US', { weekday: 'short' });
+          const dayNum = day.getDate();
+
+          return (
+            <button
+              key={dayStr}
+              onClick={() => {
+                setSelectedDate(dayStr);
+              }}
+              className={`flex flex-col items-center justify-center min-w-[50px] py-1.5 rounded-xl border transition-all duration-200 shrink-0 ${
+                isSelected
+                  ? 'bg-red-500 border-red-500 text-slate-950 font-bold shadow-md shadow-red-500/10'
+                  : 'bg-slate-955/50 border-slate-900 text-slate-400 hover:text-white hover:border-slate-800'
+              }`}
+            >
+              <span className="text-[9px] uppercase tracking-wider opacity-85">{dayName}</span>
+              <span className="text-sm font-extrabold mt-0.5">{dayNum}</span>
+              {isToday && !isSelected && (
+                <span className="h-1 w-1 rounded-full bg-red-400 mt-1" />
+              )}
+            </button>
+          );
+        })}
+      </div>
 
       {logs.length === 0 ? (
         <div className="text-center py-10 text-slate-500 text-sm">
-          No logs recorded today yet. Use the photo scanner or manual logger above to get started!
+          No logs recorded on this day. Use the photo scanner or manual logger above to get started!
         </div>
       ) : (
         <div className="space-y-3">

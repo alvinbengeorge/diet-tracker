@@ -69,7 +69,7 @@ const NUTRITION_TIPS = [
   "Almost there! Refinement algorithms are validating food densities..."
 ];
 
-export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void }) {
+export default function ImageEstimator({ onLogSaved, selectedDate }: { onLogSaved: () => void; selectedDate?: string }) {
   const { fetchWithAuth } = useAuth();
   const [mealType, setMealType] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('breakfast');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -172,7 +172,7 @@ export default function ImageEstimator({ onLogSaved }: { onLogSaved: () => void 
         body: JSON.stringify({
           type: 'food',
           name: editableName,
-          date: new Date(),
+          date: selectedDate ? new Date(selectedDate + 'T12:00:00') : new Date(),
           caloriesIn: editableCalories,
           protein: editableProtein,
           carbs: editableCarbs,

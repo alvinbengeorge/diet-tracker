@@ -1,8 +1,9 @@
 'use client';
 
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { Activity, LogOut, LayoutDashboard, Bot } from 'lucide-react';
+import { Activity, LogOut, LayoutDashboard, Bot, Download } from 'lucide-react';
 
 interface NavbarProps {
   activeTab?: 'tracker' | 'chat';
@@ -11,6 +12,42 @@ interface NavbarProps {
 
 export default function Navbar({ activeTab, setActiveTab }: NavbarProps = {}) {
   const { user, logout } = useAuth();
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later.
+      setDeferredPrompt(e);
+      // Update UI notify the user they can install the PWA
+      setShowInstallBtn(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Check if already installed / standalone
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallBtn(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    // Show the install prompt
+    deferredPrompt.prompt();
+    // Wait for the user to respond to the prompt
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to PWA install: ${outcome}`);
+    // We've used the prompt, and can't use it again
+    setDeferredPrompt(null);
+    setShowInstallBtn(false);
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-800 bg-slate-950/70 backdrop-blur-md">
@@ -68,6 +105,16 @@ export default function Navbar({ activeTab, setActiveTab }: NavbarProps = {}) {
                   <span className="text-xs text-slate-400">Logged in as</span>
                   <span className="text-sm font-semibold text-red-400">{user.username}</span>
                 </div>
+                {showInstallBtn && (
+                  <button
+                    onClick={handleInstallClick}
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-bold text-slate-950 shadow-md shadow-emerald-500/10 transition-all duration-200"
+                    title="Install FitAI App"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span className="hidden xs:inline sm:inline">Install</span>
+                  </button>
+                )}
                 <button
                   onClick={logout}
                   className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/50 hover:bg-red-950/40 hover:border-red-900/50 px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-300 hover:text-red-400 transition-all duration-200"

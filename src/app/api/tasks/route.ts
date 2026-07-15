@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     const data = await req.json();
 
-    const { text, date, isRecurring, xpValue } = data;
+    const { text, date, isRecurring, time } = data;
 
     if (!text || !date) {
       return NextResponse.json({ error: 'Text and date are required' }, { status: 400 });
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       text,
       date: new Date(date),
       isRecurring: !!isRecurring,
-      xpValue: typeof xpValue === 'number' ? xpValue : 10,
+      time: time || '',
       completed: false,
       completedDates: [],
     });

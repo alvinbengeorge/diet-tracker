@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { CheckCircle2, Circle, Trash2, Plus, Sparkles, Loader2 } from 'lucide-react';
+import { CheckCircle2, Circle, Trash2, Plus, Sparkles, Loader2, Clock } from 'lucide-react';
 
 interface TaskItem {
   _id: string;
@@ -10,7 +10,7 @@ interface TaskItem {
   completed: boolean;
   completedDates: string[];
   isRecurring: boolean;
-  xpValue: number;
+  time: string;
   date: string;
 }
 
@@ -26,7 +26,7 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
-  const [xpValue, setXpValue] = useState(10);
+  const [time, setTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -60,14 +60,14 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
           text: text.trim(),
           date: selectedDate,
           isRecurring,
-          xpValue,
+          time: time || '',
         }),
       });
 
       if (res.ok) {
         setText('');
         setIsRecurring(false);
-        setXpValue(10);
+        setTime('');
         onTaskChanged();
       }
     } catch (err) {
@@ -113,44 +113,25 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
     }
   };
 
-  // Calculate XP stats
-  const totalXPAvailable = tasks.reduce((sum, t) => sum + t.xpValue, 0);
-  const xpEarned = tasks.reduce((sum, t) => {
-    const isCompleted = t.isRecurring ? t.completedDates.includes(selectedDate) : t.completed;
-    return sum + (isCompleted ? t.xpValue : 0);
-  }, 0);
-
-  const xpPercent = totalXPAvailable > 0 ? Math.min(Math.round((xpEarned / totalXPAvailable) * 100), 100) : 0;
+  // Stats calculation
+  const totalTasks = tasks.length;
+  const completedCount = tasks.filter(t => 
+    t.isRecurring ? t.completedDates.includes(selectedDate) : t.completed
+  ).length;
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 backdrop-blur-sm">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-white flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-red-400" />
-          Daily Targets & Habits
+          Daily Checklist
         </h3>
-        {totalXPAvailable > 0 && (
+        {totalTasks > 0 && (
           <span className="text-[11px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full">
-            {xpEarned} / {totalXPAvailable} XP
+            {completedCount} / {totalTasks} Completed
           </span>
         )}
       </div>
-
-      {/* XP Progress Bar */}
-      {totalXPAvailable > 0 && (
-        <div className="mb-6">
-          <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 font-medium uppercase tracking-wider">
-            <span>XP Goals Completed</span>
-            <span>{xpPercent}%</span>
-          </div>
-          <div className="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden border border-slate-900/50">
-            <div
-              className="bg-gradient-to-r from-red-500 to-rose-400 h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
-              style={{ width: `${xpPercent}%` }}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Task List */}
       {loading ? (
@@ -198,16 +179,19 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                    isCompleted 
-                      ? 'bg-slate-900 border border-slate-800 text-slate-500'
-                      : 'bg-red-950/30 border border-red-900/20 text-red-400'
-                  }`}>
-                    +{task.xpValue} XP
-                  </span>
+                  {task.time && (
+                    <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                      isCompleted 
+                        ? 'bg-slate-900 border border-slate-800 text-slate-500'
+                        : 'bg-slate-900 border border-slate-800 text-slate-300'
+                    }`}>
+                      <Clock className={`h-3 w-3 ${isCompleted ? 'text-slate-500' : 'text-red-400'}`} />
+                      {task.time}
+                    </span>
+                  )}
                   
                   {task.isRecurring && (
-                    <span className="text-[9px] uppercase tracking-wider font-bold text-slate-500 bg-slate-900 px-1 py-0.5 rounded border border-slate-800">
+                    <span className="text-[9px] uppercase tracking-wider font-bold text-slate-500 bg-slate-900 px-1 py-0.5 rounded border border-slate-850">
                       Habit
                     </span>
                   )}
@@ -231,7 +215,7 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
           <input
             type="text"
             required
-            placeholder="Add goal (e.g., Drink 3L water)..."
+            placeholder="Add checklist item..."
             value={text}
             onChange={(e) => setText(e.target.value)}
             className="flex-1 text-xs rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-white focus:border-red-500 focus:outline-none placeholder-slate-500"
@@ -257,17 +241,13 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
           </label>
 
           <div className="flex items-center gap-1.5">
-            <span>XP Value:</span>
-            <select
-              value={xpValue}
-              onChange={(e) => setXpValue(Number(e.target.value))}
-              className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-white focus:border-red-500 focus:outline-none"
-            >
-              <option value={5}>5 XP</option>
-              <option value={10}>10 XP</option>
-              <option value={20}>20 XP</option>
-              <option value={50}>50 XP</option>
-            </select>
+            <span>Time:</span>
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-white focus:border-red-500 focus:outline-none [color-scheme:dark]"
+            />
           </div>
         </div>
       </form>

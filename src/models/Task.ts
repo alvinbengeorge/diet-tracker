@@ -30,9 +30,9 @@ const TaskSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    xpValue: {
-      type: Number,
-      default: 10,
+    time: {
+      type: String, // Target time in 'HH:MM' or simple time description format
+      default: '',
     },
   },
   { timestamps: true }

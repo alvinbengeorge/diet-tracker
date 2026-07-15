@@ -88,7 +88,8 @@ export async function POST(req: NextRequest) {
 
     const activeTasks = tasks.map((t: any) => {
       const isDone = t.isRecurring ? t.completedDates.includes(todayCA) : t.completed;
-      return `- ID: ${t._id} | ${t.text} (${t.xpValue} XP) | [${t.isRecurring ? 'Daily Habit' : 'One-off Task'}] | Status: ${isDone ? 'Completed' : 'Pending'}`;
+      const timeStr = t.time ? ` at ${t.time}` : '';
+      return `- ID: ${t._id} | ${t.text}${timeStr} | [${t.isRecurring ? 'Daily Habit' : 'One-off Task'}] | Status: ${isDone ? 'Completed' : 'Pending'}`;
     });
 
     let totalCaloriesIn = 0;
@@ -242,7 +243,7 @@ Antihallucination & Function Calling Rules:
             properties: {
               text: { type: 'STRING', description: 'Description of the goal/task (e.g., Drink 3 liters of water, Buy protein powder)' },
               isRecurring: { type: 'BOOLEAN', description: 'Whether this is a recurring daily habit. Set true for recurring habits, false for one-off tasks.' },
-              xpValue: { type: 'INTEGER', description: 'Gamified experience point reward for completion (default: 10, range: 5 to 50)' },
+              time: { type: 'STRING', description: 'Optional target time for the task in HH:MM format (e.g. 08:30 or 18:00) or general description (e.g. morning, evening).' },
               date: { type: 'STRING', description: 'Target date in YYYY-MM-DD format (optional, defaults to today)' }
             },
             required: ['text']
@@ -394,11 +395,11 @@ Antihallucination & Function Calling Rules:
             text: args.text,
             date: taskDate,
             isRecurring: !!args.isRecurring,
-            xpValue: args.xpValue || 10,
+            time: args.time || '',
             completed: false,
             completedDates: [],
           });
-          loggedMessages.push(`Added task: "${args.text}" (XP: ${args.xpValue || 10})`);
+          loggedMessages.push(`Added task: "${args.text}"${args.time ? ` scheduled for ${args.time}` : ''}`);
         } else if (call.name === 'toggleFitnessTask') {
           const args = call.args as any;
           const { id, completed, dateStr } = args;

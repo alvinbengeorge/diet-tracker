@@ -4,6 +4,7 @@ import { connectToDatabase } from '@/lib/db';
 import Chat from '@/models/Chat';
 import Log from '@/models/Log';
 import User from '@/models/User';
+import Task from '@/models/Task';
 import { getAuthenticatedUser, unauthorizedResponse } from '@/lib/auth';
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -73,6 +74,23 @@ export async function POST(req: NextRequest) {
       date: { $gte: startOfDay, $lte: endOfDay },
     });
 
+    const todayCA = new Date().toLocaleDateString('en-CA');
+    const startOfToday = new Date(todayCA + 'T00:00:00');
+    const endOfToday = new Date(todayCA + 'T23:59:59.999');
+
+    const tasks = await Task.find({
+      userId: user.userId,
+      $or: [
+        { isRecurring: false, date: { $gte: startOfToday, $lte: endOfToday } },
+        { isRecurring: true, createdAt: { $lte: endOfToday } },
+      ],
+    });
+
+    const activeTasks = tasks.map((t: any) => {
+      const isDone = t.isRecurring ? t.completedDates.includes(todayCA) : t.completed;
+      return `- ID: ${t._id} | ${t.text} (${t.xpValue} XP) | [${t.isRecurring ? 'Daily Habit' : 'One-off Task'}] | Status: ${isDone ? 'Completed' : 'Pending'}`;
+    });
+
     let totalCaloriesIn = 0;
     let totalCaloriesOut = 0;
     const foodLogs: string[] = [];
@@ -103,6 +121,9 @@ ${foodLogs.length > 0 ? foodLogs.join('\n') : 'No food logged yet.'}
 
 Workouts Logged Today:
 ${workoutLogs.length > 0 ? workoutLogs.join('\n') : 'No workouts logged yet.'}
+
+Checklist Goals (Habits/Todos) for Today:
+${activeTasks.length > 0 ? activeTasks.join('\n') : 'No tasks/habits created for today yet.'}
 
 User Profile Details:
 - Weight: ${userWeight}
@@ -211,6 +232,33 @@ Antihallucination & Function Calling Rules:
               date: { type: 'STRING', description: 'Updated date in YYYY-MM-DD format (optional)' }
             },
             required: ['id']
+          }
+        },
+        {
+          name: 'addFitnessTask',
+          description: 'Adds a daily fitness goal, task, or recurring healthy habit (todo item) to the user\'s checklist.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              text: { type: 'STRING', description: 'Description of the goal/task (e.g., Drink 3 liters of water, Buy protein powder)' },
+              isRecurring: { type: 'BOOLEAN', description: 'Whether this is a recurring daily habit. Set true for recurring habits, false for one-off tasks.' },
+              xpValue: { type: 'INTEGER', description: 'Gamified experience point reward for completion (default: 10, range: 5 to 50)' },
+              date: { type: 'STRING', description: 'Target date in YYYY-MM-DD format (optional, defaults to today)' }
+            },
+            required: ['text']
+          }
+        },
+        {
+          name: 'toggleFitnessTask',
+          description: 'Updates completion status of a checklist goal/task using its ID.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              id: { type: 'STRING', description: 'The MongoDB ObjectId of the task entry to update (e.g. 64b8a...)' },
+              completed: { type: 'BOOLEAN', description: 'Target completion status (true to check off, false to mark pending)' },
+              dateStr: { type: 'STRING', description: 'The target completion date in YYYY-MM-DD format. Required if toggling a recurring daily habit.' }
+            },
+            required: ['id', 'completed']
           }
         }
       ]
@@ -337,6 +385,38 @@ Antihallucination & Function Calling Rules:
             loggedMessages.push(`Updated log entry "${updatedLog.name}" (ID: ${args.id})`);
           } else {
             loggedMessages.push(`Failed to update log entry: ID ${args.id} not found.`);
+          }
+        } else if (call.name === 'addFitnessTask') {
+          const args = call.args as any;
+          const taskDate = args.date ? new Date(args.date + 'T12:00:00') : new Date();
+          await Task.create({
+            userId: user.userId,
+            text: args.text,
+            date: taskDate,
+            isRecurring: !!args.isRecurring,
+            xpValue: args.xpValue || 10,
+            completed: false,
+            completedDates: [],
+          });
+          loggedMessages.push(`Added task: "${args.text}" (XP: ${args.xpValue || 10})`);
+        } else if (call.name === 'toggleFitnessTask') {
+          const args = call.args as any;
+          const { id, completed, dateStr } = args;
+          const task = await Task.findOne({ _id: id, userId: user.userId });
+          if (task) {
+            if (task.isRecurring) {
+              const actualDateStr = dateStr || new Date().toLocaleDateString('en-CA');
+              if (completed) {
+                await Task.updateOne({ _id: id }, { $addToSet: { completedDates: actualDateStr } });
+              } else {
+                await Task.updateOne({ _id: id }, { $pull: { completedDates: actualDateStr } });
+              }
+            } else {
+              await Task.updateOne({ _id: id }, { $set: { completed: completed } });
+            }
+            loggedMessages.push(`Toggled task "${task.text}" completion to ${completed}`);
+          } else {
+            loggedMessages.push(`Failed to toggle task: ID ${id} not found.`);
           }
         }
       }

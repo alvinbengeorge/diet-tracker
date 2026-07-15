@@ -9,6 +9,7 @@ import ImageEstimator from '@/components/ImageEstimator';
 import Chatbot from '@/components/Chatbot';
 import LogForm from '@/components/LogForm';
 import LogsList from '@/components/LogsList';
+import TaskChecklist from '@/components/TaskChecklist';
 import { Flame, Utensils, Zap, Loader2, User as UserIcon } from 'lucide-react';
 
 interface DailySummary {
@@ -213,9 +214,14 @@ export default function Dashboard() {
                 <LogForm onLogSaved={handleRefresh} selectedDate={selectedDate} />
               </div>
 
-              {/* Column 2: Image Calorie Scanner */}
-              <div>
+              {/* Column 2: Image Calorie Scanner & Daily Goals */}
+              <div className="space-y-6">
                 <ImageEstimator onLogSaved={handleRefresh} selectedDate={selectedDate} />
+                <TaskChecklist
+                  selectedDate={selectedDate}
+                  refreshTrigger={refreshTrigger}
+                  onTaskChanged={handleRefresh}
+                />
               </div>
 
               {/* Column 3: Log Entries List */}

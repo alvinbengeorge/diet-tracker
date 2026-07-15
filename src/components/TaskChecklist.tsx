@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { CheckCircle2, Circle, Trash2, Plus, Sparkles, Loader2, Clock } from 'lucide-react';
+import { CheckCircle2, Circle, Trash2, Plus, Sparkles, Loader2, Clock, Edit2, Check, X } from 'lucide-react';
 
 interface TaskItem {
   _id: string;
@@ -24,10 +24,18 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
   const { fetchWithAuth } = useAuth();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Create Form State
   const [text, setText] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [time, setTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Inline Edit State
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [editIsRecurring, setEditIsRecurring] = useState(false);
 
   useEffect(() => {
     async function fetchTasks() {
@@ -97,6 +105,43 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
     }
   };
 
+  const handleSaveEdit = async (id: string) => {
+    if (!editText.trim()) return;
+
+    try {
+      const res = await fetchWithAuth('/api/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          text: editText.trim(),
+          time: editTime,
+          isRecurring: editIsRecurring,
+        }),
+      });
+
+      if (res.ok) {
+        setEditingTaskId(null);
+        onTaskChanged();
+      }
+    } catch (err) {
+      console.error('Failed to save task edits:', err);
+    }
+  };
+
+  const startEditing = (task: TaskItem) => {
+    setEditingTaskId(task._id);
+    setEditText(task.text);
+    setEditTime(task.time || '');
+    setEditIsRecurring(task.isRecurring);
+  };
+
+  const cancelEditing = () => {
+    setEditingTaskId(null);
+    setEditText('');
+    setEditTime('');
+  };
+
   const handleDeleteTask = async (id: string) => {
     if (!confirm('Delete this checklist task?')) return;
 
@@ -143,11 +188,66 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
           No habits or tasks defined for this day.
         </div>
       ) : (
-        <div className="space-y-2 mb-6 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-850 scrollbar-track-transparent">
+        <div className="space-y-2 mb-6 max-h-[260px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-850 scrollbar-track-transparent">
           {tasks.map((task) => {
+            const isEditing = editingTaskId === task._id;
             const isCompleted = task.isRecurring
               ? task.completedDates.includes(selectedDate)
               : task.completed;
+
+            if (isEditing) {
+              return (
+                <div
+                  key={task._id}
+                  className="flex flex-col gap-2 p-3.5 rounded-xl border border-red-500/30 bg-slate-950/60 transition-all duration-200"
+                >
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      className="flex-1 text-xs rounded-lg border border-slate-800 bg-slate-950 px-2 py-1.5 text-white focus:border-red-500 focus:outline-none"
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleSaveEdit(task._id)}
+                        className="bg-emerald-500/20 border border-emerald-500/30 hover:bg-emerald-500 hover:text-slate-950 text-emerald-400 p-1.5 rounded-lg transition-all duration-150"
+                        title="Save Changes"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 p-1.5 rounded-lg transition-all duration-150"
+                        title="Cancel"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={editIsRecurring}
+                        onChange={(e) => setEditIsRecurring(e.target.checked)}
+                        className="rounded border-slate-800 bg-slate-950 text-red-500 focus:ring-red-500 focus:ring-offset-slate-950"
+                      />
+                      <span>Daily Habit</span>
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <span>Time:</span>
+                      <input
+                        type="time"
+                        value={editTime}
+                        onChange={(e) => setEditTime(e.target.value)}
+                        className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-white focus:border-red-500 focus:outline-none [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            }
 
             return (
               <div
@@ -178,7 +278,7 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {task.time && (
                     <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md ${
                       isCompleted 
@@ -196,12 +296,23 @@ export default function TaskChecklist({ selectedDate, refreshTrigger, onTaskChan
                     </span>
                   )}
 
-                  <button
-                    onClick={() => handleDeleteTask(task._id)}
-                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all duration-200 p-0.5 rounded hover:bg-slate-900"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {/* Edit and Delete Buttons (Always visible on mobile/touch, reveals on hover on desktop) */}
+                  <div className="flex gap-0.5 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity duration-150">
+                    <button
+                      onClick={() => startEditing(task)}
+                      className="text-slate-500 hover:text-red-400 transition-all duration-200 p-1 rounded hover:bg-slate-900"
+                      title="Edit task"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTask(task._id)}
+                      className="text-slate-500 hover:text-red-400 transition-all duration-200 p-1 rounded hover:bg-slate-900"
+                      title="Delete task"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );

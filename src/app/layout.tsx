@@ -43,24 +43,42 @@ export default function RootLayout({
         <AuthProvider>
           {children}
         </AuthProvider>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').then(
-                    function(registration) {
-                      console.log('Service Worker registered successfully with scope: ', registration.scope);
-                    },
-                    function(err) {
-                      console.log('Service Worker registration failed: ', err);
+        {process.env.NODE_ENV === 'development' ? (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for (let registration of registrations) {
+                      registration.unregister().then(function(success) {
+                        if (success) console.log('[FitAI] Unregistered service worker for local development.');
+                      });
                     }
-                  );
-                });
-              }
-            `,
-          }}
-        />
+                  });
+                }
+              `,
+            }}
+          />
+        ) : (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                if ('serviceWorker' in navigator) {
+                  window.addEventListener('load', function() {
+                    navigator.serviceWorker.register('/sw.js').then(
+                      function(registration) {
+                        console.log('Service Worker registered successfully with scope: ', registration.scope);
+                      },
+                      function(err) {
+                        console.log('Service Worker registration failed: ', err);
+                      }
+                    );
+                  });
+                }
+              `,
+            }}
+          />
+        )}
       </body>
     </html>
   );

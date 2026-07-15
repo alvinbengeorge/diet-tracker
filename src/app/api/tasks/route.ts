@@ -83,10 +83,10 @@ export async function PUT(req: NextRequest) {
     await connectToDatabase();
     const data = await req.json();
 
-    const { id, completed, dateStr } = data;
+    const { id, completed, text, time, isRecurring, dateStr } = data;
 
-    if (!id || typeof completed !== 'boolean') {
-      return NextResponse.json({ error: 'Task ID and completed state are required' }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
     }
 
     const task = await Task.findOne({ _id: id, userId: user.userId });
@@ -94,26 +94,42 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Task not found or unauthorized' }, { status: 404 });
     }
 
-    if (task.isRecurring) {
-      if (!dateStr) {
-        return NextResponse.json({ error: 'Date string (dateStr) is required to toggle a recurring task' }, { status: 400 });
-      }
+    const updateFields: any = {};
+    if (text !== undefined) updateFields.text = text;
+    if (time !== undefined) updateFields.time = time;
+    if (isRecurring !== undefined) updateFields.isRecurring = isRecurring;
+
+    // Handle completion toggling
+    if (completed !== undefined) {
+      const targetIsRecurring = isRecurring !== undefined ? isRecurring : task.isRecurring;
       
-      if (completed) {
-        await Task.updateOne(
-          { _id: id },
-          { $addToSet: { completedDates: dateStr } }
-        );
+      if (targetIsRecurring) {
+        if (!dateStr) {
+          return NextResponse.json({ error: 'Date string (dateStr) is required to toggle a recurring task' }, { status: 400 });
+        }
+        
+        if (completed) {
+          await Task.updateOne(
+            { _id: id },
+            { $addToSet: { completedDates: dateStr }, $set: updateFields }
+          );
+        } else {
+          await Task.updateOne(
+            { _id: id },
+            { $pull: { completedDates: dateStr }, $set: updateFields }
+          );
+        }
       } else {
+        updateFields.completed = completed;
         await Task.updateOne(
           { _id: id },
-          { $pull: { completedDates: dateStr } }
+          { $set: updateFields }
         );
       }
     } else {
       await Task.updateOne(
         { _id: id },
-        { $set: { completed: completed } }
+        { $set: updateFields }
       );
     }
 
